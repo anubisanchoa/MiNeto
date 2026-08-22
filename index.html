@@ -131,6 +131,14 @@
   </div>
 </details>
 
+<details id="diagbox">
+  <summary>Diagnóstico de la última consulta</summary>
+  <div class="box">
+    <pre id="diag" style="font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.6"></pre>
+    <button id="copiar" style="margin-top:10px">Copiar</button>
+  </div>
+</details>
+
 <details>
   <summary>Efectivo y limpieza</summary>
   <div class="box">
@@ -178,7 +186,7 @@
   const TOTAL_UNITS = 86944.01 / HWM_U;    // NAV del fondo por punto de índice
   const PERF=0.20, MGMT=0.02, MGMT_FROM=Date.UTC(2027,0,1);
   const KEY='mineto:hist';
-  const VERSION='v4';
+  const VERSION='v5';
 
   const $=i=>document.getElementById(i);
   const usd=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n||0);
@@ -282,16 +290,21 @@
     u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)
   ];
   const CASH_KEY='mineto:cash', SRC_KEY='mineto:src';
+  let LOG=[];
+  const log=s=>{ LOG.push(s); const el=$('diag'); if(el) el.textContent=LOG.join('\n'); };
   const storedCash=()=>{ const v=parseFloat(localStorage.getItem(CASH_KEY)); return isFinite(v)?v:null; };
 
   async function getJSON(url){
     let last;
-    for(const via of VIAS){
+    for(let i=0;i<VIAS.length;i++){
+      const nombre=['directo','corsproxy','allorigins'][i];
       try{
-        const r=await fetch(via(url),{cache:'no-store'});
+        const r=await fetch(VIAS[i](url),{cache:'no-store'});
         if(!r.ok) throw new Error('HTTP '+r.status);
-        return await r.json();
-      }catch(e){ last=e; }
+        const j=await r.json();
+        log(`data-api via ${nombre}: ok`);
+        return j;
+      }catch(e){ last=e; log(`data-api via ${nombre}: ${e.message}`); }
     }
     throw last||new Error('sin respuesta');
   }
@@ -299,30 +312,40 @@
   async function fetchPortfolio(){
     const j=await getJSON(POSITIONS);
     if(!Array.isArray(j)) throw new Error('respuesta inesperada');
-    return j.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+    const v=j.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+    log(`posiciones: ${j.length} mercados, ${v.toFixed(2)} $`);
+    return v;
   }
 
   // peticiones sueltas, no en lote: hay nodos que rechazan el lote entero
   async function fetchCash(){
     const call='0x70a08231000000000000000000000000'+WALLET.slice(2);
     for(const rpc of RPCS){
+      const corto=rpc.replace('https://','').split('/')[0];
       let sum=0, got=false, detalle=[];
       for(const [nombre,token] of ERC20){
         try{
           const r=await fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',
                                  params:[{to:token,data:call},'latest']})});
-          if(!r.ok) continue;
+          if(!r.ok){ log(`${corto} ${nombre}: HTTP ${r.status}`); continue; }
           const j=await r.json();
+          if(j&&j.error){ log(`${corto} ${nombre}: ${j.error.message||'error rpc'}`); continue; }
           if(j&&j.result&&j.result!=='0x'){
-            const v=parseInt(j.result,16)/1e6;   // los tres tienen 6 decimales
+            const v=parseInt(j.result,16)/1e6;
             sum+=v; got=true;
+            log(`${corto} ${nombre}: ${v.toFixed(2)}`);
             if(v>0.005) detalle.push(`${nombre} ${v.toFixed(0)}`);
-          }
-        }catch(e){}
+          } else log(`${corto} ${nombre}: respuesta vacía`);
+        }catch(e){ log(`${corto} ${nombre}: ${e.message}`); }
       }
-      if(got){ localStorage.setItem('mineto:cashdet', detalle.join(' + ')||'0'); return sum; }
+      if(got){
+        localStorage.setItem('mineto:cashdet', detalle.join(' + ')||'0');
+        if(sum<=0.01){ log('saldo leído = 0, lo trato como no fiable'); return null; }
+        return sum;
+      }
     }
+    log('ningún nodo RPC respondió');
     return null;
   }
 
@@ -330,13 +353,15 @@
      conocido, lo enseña y espera confirmación en vez de dibujar una caída falsa. */
   let pendiente=null;
   function proponer(nav, pf, cash, parcial){
-    const prevNav=H[H.length-1].u*TOTAL_UNITS;
+    const previos=H.filter(p=>p.d!==today());
+    const ref=previos.length?previos[previos.length-1]:H[H.length-1];
+    const prevNav=ref.u*TOTAL_UNITS;
     const dif=(nav-prevNav)/prevNav;
     if(Math.abs(dif)>0.025){
       pendiente={nav,pf,cash,parcial};
       $('warn').hidden=false;
       $('warntxt').innerHTML=`El NAV leído (<b>${usd0(nav)}</b>) se aparta un `
-        +`<b>${pc(dif*100)}</b> del último dato (${usd0(prevNav)}). `
+        +`<b>${pc(dif*100)}</b> del ${ref.d} (${usd0(prevNav)}). `
         +`Posiciones ${usd0(pf)} + efectivo ${cash===null?'no leído':usd0(cash)}. `
         +`No lo he registrado: revísalo antes.`;
       return false;
@@ -349,6 +374,7 @@
   }
 
   async function refresh(){
+    LOG=[]; log(`— ${new Date().toLocaleTimeString('es-ES')} · app ${VERSION} —`);
     $('stamp').textContent='Consultando…'; $('stamp').className='stamp';
     $('fallback').hidden=true;
     try{
@@ -356,12 +382,21 @@
       const cash=await fetchCash();
       if(cash!==null) localStorage.setItem(CASH_KEY,String(cash));
       const usado = cash!==null ? cash : storedCash();
-      if(usado===null) throw new Error('sin saldo');
+      if(usado===null){ log('sin efectivo fiable: no registro el día'); throw new Error('sin saldo'); }
       const nav=pf+usado;
+      log(`NAV = ${pf.toFixed(2)} + ${usado.toFixed(2)} = ${nav.toFixed(2)} → índice ${(nav/TOTAL_UNITS).toFixed(2)}`);
       if(!isFinite(nav)||nav<=0) throw new Error('NAV no válido');
-      proponer(nav, pf, cash, cash===null);
+      const guardado=proponer(nav, pf, cash, cash===null);
+      log(guardado?'registrado':'descartado por desviación');
       render();
+      if(guardado){
+        $('stamp').textContent = cash===null ? 'Parcial · hoy' : 'Polymarket · hoy';
+        $('stamp').className = 'stamp' + (cash===null?' stale':'');
+      } else {
+        $('stamp').textContent='Revisar'; $('stamp').className='stamp stale';
+      }
     }catch(e){
+      log('fallo: '+e.message);
       render();
       $('stamp').textContent='Sin conexión'; $('stamp').className='stamp stale';
       $('fallback').hidden=false;
@@ -507,6 +542,11 @@
   };
   $('mv').addEventListener('keydown',e=>{ if(e.key==='Enter') $('save').click(); });
   $('stamp').onclick=()=>refresh();
+  $('copiar').onclick=()=>{
+    navigator.clipboard.writeText(LOG.join('\n')).then(
+      ()=>{ $('copiar').textContent='Copiado'; setTimeout(()=>$('copiar').textContent='Copiar',2000); },
+      ()=>{});
+  };
 
   $('acepta').onclick=()=>{
     if(!pendiente) return;
