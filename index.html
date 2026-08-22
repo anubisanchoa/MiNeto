@@ -142,6 +142,7 @@
     </div>
     <p style="margin-top:12px">¿Un día quedó mal registrado?</p>
     <button id="delhoy">Borrar el dato de hoy</button>
+    <button id="reset">Reiniciar histórico</button>
     <div class="res" id="cashres"></div>
   </div>
 </details>
@@ -177,6 +178,7 @@
   const TOTAL_UNITS = 86944.01 / HWM_U;    // NAV del fondo por punto de índice
   const PERF=0.20, MGMT=0.02, MGMT_FROM=Date.UTC(2027,0,1);
   const KEY='mineto:hist';
+  const VERSION='v4';
 
   const $=i=>document.getElementById(i);
   const usd=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n||0);
@@ -487,9 +489,10 @@
       <div class="row"><span class="lbl">Rendimiento anual neto<small>${(c.net>=0?'+':'')+pc(c.net/PAID*100)} en ${days} ${days===1?'día':'días'}, capitalizado a 365</small></span>
         <span class="val ${ann>=0?'pos':'neg'}">${(ann>=0?'+':'')+pc(ann)}</span></div>`;
 
-    $('note').textContent=`${H.length} días registrados desde el 16 de agosto. Los seis primeros vienen de `
-      +`la columna H de tu hoja; el resto los has metido tú. El NAV se convierte a índice dividiendo `
-      +`entre ${un(TOTAL_UNITS)}, los dólares de NAV que corresponden a cada punto.`;
+    $('note').innerHTML=`${H.length} días registrados desde el 16 de agosto. Los seis primeros vienen de `
+      +`la columna H de tu hoja. El NAV se convierte a índice dividiendo entre ${un(TOTAL_UNITS)}, `
+      +`los dólares que corresponden a cada punto. `
+      +`<span style="color:var(--amber-dim)">App ${VERSION}</span>`;
     $('mv').placeholder=uv(c.u);
     if(!$('cashv').value && storedCash()!==null) $('cashv').value=String(Math.round(storedCash()));
     draw();
@@ -520,6 +523,17 @@
     localStorage.setItem(CASH_KEY,String(n));
     $('cashres').innerHTML=`<span class="pos">Efectivo fijado en ${usd(n)}.</span>`;
     refresh();
+  };
+  $('reset').onclick=()=>{
+    if($('reset').dataset.armed!=='1'){
+      $('reset').dataset.armed='1'; $('reset').textContent='¿Seguro? Toca otra vez';
+      setTimeout(()=>{ $('reset').dataset.armed='0'; $('reset').textContent='Reiniciar histórico'; },4000);
+      return;
+    }
+    ['mineto:hist','mineto:cash','mineto:src','mineto:comp','mineto:cashdet'].forEach(k=>localStorage.removeItem(k));
+    $('reset').dataset.armed='0'; $('reset').textContent='Reiniciar histórico';
+    load(); render(); refresh();
+    $('cashres').innerHTML='<span class="pos">Histórico devuelto a los seis días de la hoja.</span>';
   };
   $('delhoy').onclick=()=>{
     const d=today();
