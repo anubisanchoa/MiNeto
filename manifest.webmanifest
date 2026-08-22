@@ -1,13 +1,13 @@
 {
-  "name": "Mi neto",
-  "short_name": "Mi neto",
-  "description": "Seguimiento del neto de mi participación en la cartera",
+  "name": "knradFund",
+  "short_name": "knradFund",
+  "description": "Seguimiento del neto de mi participación en el fondo",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#08131A",
-  "theme_color": "#08131A",
+  "background_color": "#17338C",
+  "theme_color": "#17338C",
   "lang": "es-ES",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
