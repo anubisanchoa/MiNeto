@@ -1,0 +1,17 @@
+{
+  "name": "Mi neto",
+  "short_name": "Mi neto",
+  "description": "Seguimiento del neto de mi participación en la cartera",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08131A",
+  "theme_color": "#08131A",
+  "lang": "es-ES",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

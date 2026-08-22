@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08131A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Mi neto</title>
+<style>
+  :root{
+    --ink:#08131A; --surface:#0E1F28; --surface-2:#123040; --line:#1B3B49;
+    --text:#E6F0F2; --muted:#6E8B95; --amber:#F2A33C; --amber-dim:#8A5F22;
+    --pos:#3FD2A0; --neg:#FF6B6B;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--ink)}
+  body{color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.45;
+       padding:calc(20px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+       max-width:680px;margin:0 auto}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .pos{color:var(--pos)} .neg{color:var(--neg)}
+
+  .head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  #net{font-size:clamp(44px,15vw,66px);font-weight:600;line-height:.92;display:block;margin:8px 0 8px}
+  .sub{font-size:13.5px;color:var(--muted)}
+  .sub b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .stamp{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:99px;
+         padding:4px 9px;white-space:nowrap}
+  .stamp.stale{color:var(--amber);border-color:var(--amber-dim)}
+  .ann{display:flex;align-items:baseline;gap:8px;margin-top:12px;padding-top:12px;
+       border-top:1px solid var(--line);font-size:13px;color:var(--muted);flex-wrap:wrap}
+  .ann .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600}
+  .ann .warn{font-size:10.5px;color:var(--amber-dim);flex-basis:100%;line-height:1.5}
+
+  .chart-box{position:relative;background:var(--surface);border:1px solid var(--line);
+             border-radius:16px;padding:14px 12px 10px;margin:22px 0 8px}
+  svg{display:block;width:100%;height:auto;touch-action:pan-y}
+  .readout{position:absolute;top:12px;left:14px;font-size:11px;color:var(--muted);pointer-events:none}
+  .readout b{font-family:var(--mono);font-weight:600}
+  .axis{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
+        font-family:var(--mono);padding:0 4px}
+  .note{font-size:11px;color:var(--muted);line-height:1.55;margin:12px 0 26px}
+
+  h2{margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;
+     font-size:10px;font-weight:600}
+  .fall{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px;
+       background:var(--surface);border-bottom:1px solid var(--line);font-size:13px}
+  .row:last-child{border-bottom:0}
+  .row .lbl{color:var(--muted)}
+  .row .lbl small{display:block;font-size:10.5px;opacity:.75;margin-top:2px;line-height:1.4}
+  .row .val{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:550}
+  .row.step{background:#0B1A22}
+  .row.final{background:var(--surface-2)}
+  .row.final .lbl{color:var(--text);font-weight:600}
+  .row.final .val{font-size:16px;font-weight:650}
+
+  .manual{display:flex;gap:8px;align-items:center;margin-top:14px}
+  .manual label{font-size:11px;color:var(--muted);flex:none}
+  .manual input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);color:var(--text);
+                border-radius:8px;padding:10px;font-family:var(--mono);font-size:13px}
+  .manual input:focus{outline:2px solid var(--amber);outline-offset:1px;border-color:transparent}
+  .manual button{background:var(--amber);color:#0A1218;border:0;border-radius:8px;padding:10px 15px;
+                 font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);flex:none}
+
+  details{margin-top:12px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  summary{padding:11px 13px;font-size:12px;color:var(--muted);cursor:pointer;background:var(--surface);list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:'+ ';color:var(--amber)}
+  details[open] summary::before{content:'− '}
+  .box{padding:0 13px 14px;background:var(--surface)}
+  .box textarea{width:100%;height:110px;background:var(--ink);border:1px solid var(--line);color:var(--text);
+                border-radius:8px;padding:10px;font-family:var(--mono);font-size:12px;resize:vertical}
+  .box textarea:focus{outline:2px solid var(--amber);outline-offset:1px;border-color:transparent}
+  .box p{font-size:11px;color:var(--muted);line-height:1.55;margin:8px 0 10px}
+  .box button{background:var(--surface-2);color:var(--text);border:1px solid var(--line);border-radius:8px;
+              padding:9px 15px;font-size:12.5px;cursor:pointer;font-family:var(--sans);margin-right:8px}
+  .box button.go{background:var(--amber);color:#0A1218;border:0;font-weight:600}
+  .res{font-size:11.5px;margin-top:10px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="eyebrow">Mi neto</div>
+  <button class="stamp" id="stamp" style="cursor:pointer;font-family:inherit">—</button>
+</div>
+<span class="num" id="net">—</span>
+<div class="sub" id="sub">—</div>
+<div class="ann" id="ann"></div>
+
+<div class="chart-box">
+  <div class="readout" id="readout"></div>
+  <svg id="chart" viewBox="0 0 340 190" role="img" aria-label="Evolución de mi neto"></svg>
+</div>
+<div class="axis"><span id="ax0"></span><span id="ax1"></span></div>
+<p class="note"><span id="gapinfo" style="color:var(--amber-dim)"></span> <span id="note"></span></p>
+
+<h2>Desglose</h2>
+<div class="fall" id="fall"></div>
+
+<div id="warn" hidden style="border:1px solid var(--amber-dim);border-radius:12px;padding:13px;margin-top:16px;background:#14100A">
+  <div class="eyebrow" style="color:var(--amber)">Dato descartado</div>
+  <p id="warntxt" style="font-size:12px;color:var(--muted);line-height:1.55;margin:8px 0 10px"></p>
+  <button id="acepta" style="background:var(--amber);color:#0A1218;border:0;border-radius:8px;padding:9px 15px;font-size:12.5px;font-weight:600;cursor:pointer;margin-right:8px">Registrarlo igual</button>
+  <button id="ignora" style="background:none;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:9px 15px;font-size:12.5px;cursor:pointer">Descartar</button>
+</div>
+
+<div id="fallback" hidden>
+  <p class="note" style="color:var(--amber-dim);margin:14px 0 8px">No he podido leer la cartera. Mete el dato a mano o reintenta tocando la etiqueta de arriba.</p>
+  <div class="manual">
+    <label for="mv">Dato de hoy</label>
+    <input id="mv" inputmode="decimal" placeholder="índice o NAV">
+    <button id="save">Guardar</button>
+  </div>
+</div>
+
+<details>
+  <summary>Rellenar días que me salté</summary>
+  <div class="box">
+    <p>Pega filas de la hoja, una por línea: fecha y valor. Sirve la columna H (índice) o la G (NAV total); las distingue por el orden de magnitud. Los días que ya tengas se sobrescriben.</p>
+    <textarea id="bulk" spellcheck="false" placeholder="22.08.2026&#9;151,92&#10;23.08.2026&#9;152,04"></textarea>
+    <button class="go" id="imp">Importar</button>
+    <div class="res" id="impres"></div>
+  </div>
+</details>
+
+<details>
+  <summary>Efectivo y limpieza</summary>
+  <div class="box">
+    <p>Si el saldo USDC no se puede leer de la cadena, se usa este valor para completar el NAV. Míralo en Betmoar de vez en cuando.</p>
+    <div class="manual" style="margin-top:0">
+      <label for="cashv">Efectivo</label>
+      <input id="cashv" inputmode="decimal">
+      <button id="cashsave">Fijar</button>
+    </div>
+    <p style="margin-top:12px">¿Un día quedó mal registrado?</p>
+    <button id="delhoy">Borrar el dato de hoy</button>
+    <div class="res" id="cashres"></div>
+  </div>
+</details>
+
+<details>
+  <summary>Respaldo del histórico</summary>
+  <div class="box">
+    <p>Los datos viven en este móvil. Si borras los datos de navegación o desinstalas la app, se pierden. Exporta de vez en cuando y guarda el archivo donde te convenga.</p>
+    <button class="go" id="exp">Exportar</button>
+    <button id="impfile">Restaurar</button>
+    <input type="file" id="file" accept="application/json" hidden>
+    <div class="res" id="bakres"></div>
+  </div>
+</details>
+
+<script>
+(() => {
+  /* ===== datos de la hoja · columna H = índice de rentabilidad, 1.1.2026 = 100 ===== */
+  const SEED=[
+    {d:'2026-08-16', u:151.67},
+    {d:'2026-08-17', u:151.33},
+    {d:'2026-08-18', u:151.20},
+    {d:'2026-08-19', u:151.43},
+    {d:'2026-08-20', u:151.39},
+    {d:'2026-08-21', u:151.85}
+  ];
+  const START='2026-08-16';
+
+  /* ===== el acuerdo, referido al índice ===== */
+  const PAID   = 21129.00;                 // desembolso del 16.08.2026
+  const HWM_U  = 151.67;                   // índice el día de tu entrada = tu marca de agua
+  const UNITS  = PAID / HWM_U;             // capital tuyo por punto de índice
+  const TOTAL_UNITS = 86944.01 / HWM_U;    // NAV del fondo por punto de índice
+  const PERF=0.20, MGMT=0.02, MGMT_FROM=Date.UTC(2027,0,1);
+  const KEY='mineto:hist';
+
+  const $=i=>document.getElementById(i);
+  const usd=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n||0);
+  const usd0=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n||0);
+  const uv=n=>new Intl.NumberFormat('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0);
+  const un=n=>new Intl.NumberFormat('es-ES',{minimumFractionDigits:4,maximumFractionDigits:4}).format(n||0);
+  const pc=n=>new Intl.NumberFormat('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0)+' %';
+  const sg=n=>(n>0?'+':'')+usd(n);
+  const dmy=ms=>new Date(ms).toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+  const dayMs=d=>new Date(d+'T12:00:00Z').getTime();
+  const today=()=>new Date().toISOString().slice(0,10);
+
+  function calc(u, ms){
+    const gross = UNITS*u;
+    let mgmt=0, mgmtDays=0;
+    if(ms>=MGMT_FROM){
+      const ys=Date.UTC(new Date(ms).getUTCFullYear(),0,1);
+      mgmtDays=(ms-Math.max(MGMT_FROM,ys))/86400000;
+      mgmt=gross*MGMT*(mgmtDays/365);
+    }
+    const uNet=(gross-mgmt)/UNITS;
+    const excessU=uNet-HWM_U;
+    const perf=excessU>0 ? UNITS*excessU*PERF : 0;
+    const value=gross-mgmt-perf;
+    return {u,uNet,gross,mgmt,mgmtDays,excessU,excess:UNITS*excessU,perf,value,
+            net:value-PAID, nav:u*TOTAL_UNITS};
+  }
+
+  /* ===== histórico en localStorage ===== */
+  let H=[];
+  function load(){
+    let saved=[];
+    try{ saved=JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ saved=[]; }
+    if(!Array.isArray(saved)) saved=[];
+    const m=new Map(SEED.map(p=>[p.d,p.u]));
+    const lastSeed=SEED[SEED.length-1].d;
+    saved.forEach(p=>{ if(p&&p.d&&isFinite(p.u)&&(!m.has(p.d)||p.d>=lastSeed)) m.set(p.d,p.u); });
+    H=[...m.entries()].map(([d,u])=>({d,u})).sort((a,b)=>a.d<b.d?-1:1);
+  }
+  function persist(){
+    try{ localStorage.setItem(KEY, JSON.stringify(H.slice(-2000))); return true; }
+    catch(e){ return false; }
+  }
+  function put(d,u){
+    H=H.filter(x=>x.d!==d); H.push({d,u}); H.sort((a,b)=>a.d<b.d?-1:1); persist();
+  }
+
+  /* ===== lectura de texto ===== */
+  function parseDate(s){
+    s=s.trim();
+    let m=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+    m=s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+    if(m){ const yr=m[3].length===2?'20'+m[3]:m[3];
+      return `${yr}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`; }
+    return null;
+  }
+  function parseNum(s){
+    s=String(s).trim().replace(/[$€\s]/g,'');
+    const lc=s.lastIndexOf(','), ld=s.lastIndexOf('.');
+    if(lc>-1&&ld>-1){ s = lc>ld ? s.replace(/\./g,'').replace(',','.') : s.replace(/,/g,''); }
+    else if(lc>-1){ s = (s.length-lc-1===3 && s.split(',').length>2) ? s.replace(/,/g,'') : s.replace(',','.'); }
+    else if(ld>-1 && s.length-ld-1===3 && s.split('.').length>2){ s=s.replace(/\./g,''); }
+    const n=parseFloat(s); return isFinite(n)?n:null;
+  }
+  const toIndex=n => n>1000 ? n/TOTAL_UNITS : n;   // por encima de 1000 es NAV, no índice
+
+  function bulkImport(text){
+    const rows=[]; let bad=0;
+    for(const raw of text.split(/\r?\n/)){
+      if(!raw.trim()) continue;
+      const parts=raw.split(/[\t;]|\s{2,}|\s+/).filter(Boolean);
+      if(parts.length<2){ bad++; continue; }
+      const d=parseDate(parts[0]), n=parseNum(parts[parts.length-1]);
+      if(!d||n===null||n<=0){ bad++; continue; }
+      rows.push({d, u:toIndex(n)});
+    }
+    if(!rows.length) return {ok:0,bad};
+    const m=new Map(H.map(p=>[p.d,p.u]));
+    rows.forEach(r=>m.set(r.d,r.u));
+    H=[...m.entries()].map(([d,u])=>({d,u})).sort((a,b)=>a.d<b.d?-1:1);
+    persist();
+    return {ok:rows.length,bad};
+  }
+
+
+  /* ===== red: Polymarket directo, con proxies de respaldo ===== */
+  const WALLET='0x4d0121458bb2f96c6440c0f3835d675ad3ce1645';
+  const POSITIONS=`https://data-api.polymarket.com/positions?user=${WALLET}&limit=500&sizeThreshold=0.1`;
+  const RPCS=['https://polygon-rpc.com','https://polygon.llamarpc.com',
+              'https://polygon-bor-rpc.publicnode.com','https://rpc.ankr.com/polygon'];
+  // colateral desde el 28.04.2026: pUSD. Los otros dos se consultan por si queda saldo suelto.
+  const ERC20=[
+    ['pUSD',   '0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb'],
+    ['USDC.e', '0x2791bca1f2de4661ed88a30c99a7a9449aa84174'],
+    ['USDC',   '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359']
+  ];
+  const VIAS=[
+    u=>u,
+    u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
+    u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)
+  ];
+  const CASH_KEY='mineto:cash', SRC_KEY='mineto:src';
+  const storedCash=()=>{ const v=parseFloat(localStorage.getItem(CASH_KEY)); return isFinite(v)?v:null; };
+
+  async function getJSON(url){
+    let last;
+    for(const via of VIAS){
+      try{
+        const r=await fetch(via(url),{cache:'no-store'});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return await r.json();
+      }catch(e){ last=e; }
+    }
+    throw last||new Error('sin respuesta');
+  }
+
+  async function fetchPortfolio(){
+    const j=await getJSON(POSITIONS);
+    if(!Array.isArray(j)) throw new Error('respuesta inesperada');
+    return j.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+  }
+
+  // peticiones sueltas, no en lote: hay nodos que rechazan el lote entero
+  async function fetchCash(){
+    const call='0x70a08231000000000000000000000000'+WALLET.slice(2);
+    for(const rpc of RPCS){
+      let sum=0, got=false, detalle=[];
+      for(const [nombre,token] of ERC20){
+        try{
+          const r=await fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',
+                                 params:[{to:token,data:call},'latest']})});
+          if(!r.ok) continue;
+          const j=await r.json();
+          if(j&&j.result&&j.result!=='0x'){
+            const v=parseInt(j.result,16)/1e6;   // los tres tienen 6 decimales
+            sum+=v; got=true;
+            if(v>0.005) detalle.push(`${nombre} ${v.toFixed(0)}`);
+          }
+        }catch(e){}
+      }
+      if(got){ localStorage.setItem('mineto:cashdet', detalle.join(' + ')||'0'); return sum; }
+    }
+    return null;
+  }
+
+  /* Nunca registra un NAV que no cuadre: si se desvía más de un 4 % del último
+     conocido, lo enseña y espera confirmación en vez de dibujar una caída falsa. */
+  let pendiente=null;
+  function proponer(nav, pf, cash, parcial){
+    const prevNav=H[H.length-1].u*TOTAL_UNITS;
+    const dif=(nav-prevNav)/prevNav;
+    if(Math.abs(dif)>0.025){
+      pendiente={nav,pf,cash,parcial};
+      $('warn').hidden=false;
+      $('warntxt').innerHTML=`El NAV leído (<b>${usd0(nav)}</b>) se aparta un `
+        +`<b>${pc(dif*100)}</b> del último dato (${usd0(prevNav)}). `
+        +`Posiciones ${usd0(pf)} + efectivo ${cash===null?'no leído':usd0(cash)}. `
+        +`No lo he registrado: revísalo antes.`;
+      return false;
+    }
+    put(today(), nav/TOTAL_UNITS);
+    localStorage.setItem(SRC_KEY, parcial?'parcial':'auto');
+    localStorage.setItem('mineto:comp', JSON.stringify({d:today(),pf,cash,parcial}));
+    $('warn').hidden=true;
+    return true;
+  }
+
+  async function refresh(){
+    $('stamp').textContent='Consultando…'; $('stamp').className='stamp';
+    $('fallback').hidden=true;
+    try{
+      const pf=await fetchPortfolio();
+      const cash=await fetchCash();
+      if(cash!==null) localStorage.setItem(CASH_KEY,String(cash));
+      const usado = cash!==null ? cash : storedCash();
+      if(usado===null) throw new Error('sin saldo');
+      const nav=pf+usado;
+      if(!isFinite(nav)||nav<=0) throw new Error('NAV no válido');
+      proponer(nav, pf, cash, cash===null);
+      render();
+    }catch(e){
+      render();
+      $('stamp').textContent='Sin conexión'; $('stamp').className='stamp stale';
+      $('fallback').hidden=false;
+    }
+  }
+
+  /* ===== gráfica ===== */
+  function draw(){
+    const svg=$('chart'), W=340, HH=190, P={l:8,r:8,t:22,b:12};
+    const pts=H.map(p=>{ const c=calc(p.u,dayMs(p.d)); return {ms:dayMs(p.d),u:p.u,n:c.net,nav:c.nav}; });
+    const t0=pts[0].ms, t1=Math.max(pts[pts.length-1].ms,t0+86400000), span=t1-t0;
+    let mn=Math.min(0,...pts.map(p=>p.n)), mx=Math.max(0,...pts.map(p=>p.n));
+    if(mx===mn){mx+=25;mn-=25;}
+    const pad=(mx-mn)*.22; mn-=pad; mx+=pad;
+    const x=ms=>P.l+((ms-t0)/span)*(W-P.l-P.r);
+    const y=v=>P.t+(1-(v-mn)/(mx-mn))*(HH-P.t-P.b);
+    const y0=y(0), last=pts[pts.length-1], col=last.n>=0?'#3FD2A0':'#FF6B6B';
+    const line=pts.map((p,i)=>`${i?'L':'M'}${x(p.ms).toFixed(1)},${y(p.n).toFixed(1)}`).join(' ');
+    const area=`${line} L${x(last.ms).toFixed(1)},${y0.toFixed(1)} L${x(pts[0].ms).toFixed(1)},${y0.toFixed(1)} Z`;
+
+    let gaps=0;
+    const segs=pts.slice(1).map((p,i)=>{
+      const q=pts[i], hole=(p.ms-q.ms)/86400000>1.6;
+      if(hole) gaps++;
+      return `<path d="M${x(q.ms).toFixed(1)},${y(q.n).toFixed(1)} L${x(p.ms).toFixed(1)},${y(p.n).toFixed(1)}"
+        fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round"
+        ${hole?'stroke-dasharray="2 3" opacity=".45"':''}/>`;
+    }).join('');
+    $('gapinfo').textContent = gaps ? `${gaps} ${gaps===1?'tramo':'tramos'} en discontinuo: días sin dato.` : '';
+    const dots=pts.map(p=>`<circle cx="${x(p.ms).toFixed(1)}" cy="${y(p.n).toFixed(1)}" r="2.1" fill="${col}" opacity=".6"/>`).join('');
+
+    svg.innerHTML=`
+      <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${col}" stop-opacity=".28"/>
+        <stop offset="100%" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+      <path d="${area}" fill="url(#g)"/>
+      <line x1="${P.l}" y1="${y0.toFixed(1)}" x2="${W-P.r}" y2="${y0.toFixed(1)}"
+            stroke="#F2A33C" stroke-width="1" stroke-dasharray="3 3" opacity=".75"/>
+      <text x="${W-P.r}" y="${(y0-5).toFixed(1)}" text-anchor="end" fill="#8A5F22"
+            font-size="8" font-family="ui-monospace,monospace">entrada · índice 151,67</text>
+      ${segs}${dots}
+      <circle id="dot" cx="${x(last.ms).toFixed(1)}" cy="${y(last.n).toFixed(1)}" r="3.6" fill="${col}"/>`;
+    $('ax0').textContent=new Date(pts[0].ms).toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+    $('ax1').textContent=new Date(last.ms).toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+    read(pts.length-1);
+
+    const move=ev=>{
+      const r=svg.getBoundingClientRect();
+      const px=((ev.touches?ev.touches[0].clientX:ev.clientX)-r.left)/r.width*W;
+      let b=0,bd=Infinity;
+      pts.forEach((p,i)=>{const d=Math.abs(x(p.ms)-px); if(d<bd){bd=d;b=i;}});
+      const dot=svg.querySelector('#dot');
+      if(dot){dot.setAttribute('cx',x(pts[b].ms).toFixed(1));dot.setAttribute('cy',y(pts[b].n).toFixed(1));}
+      read(b);
+    };
+    svg.onpointermove=move; svg.ontouchmove=move;
+    svg.onpointerleave=()=>{
+      const dot=svg.querySelector('#dot');
+      if(dot){dot.setAttribute('cx',x(last.ms).toFixed(1));dot.setAttribute('cy',y(last.n).toFixed(1));}
+      read(pts.length-1);
+    };
+    function read(i){
+      const p=pts[i];
+      $('readout').innerHTML=`${dmy(p.ms)} · <b class="${p.n>=0?'pos':'neg'}">${sg(p.n)}</b>`
+        +` <span style="opacity:.6">· índice ${uv(p.u)} · fondo ${usd0(p.nav)}</span>`;
+    }
+  }
+
+  /* ===== render ===== */
+  function render(){
+    const cur=H[H.length-1], ms=Date.now(), c=calc(cur.u,ms);
+    $('net').textContent=sg(c.net);
+    $('net').className='num '+(c.net>=0?'pos':'neg');
+    const days=Math.max(1,Math.round((ms-dayMs(START))/86400000));
+    $('sub').innerHTML=`<b class="${c.net>=0?'pos':'neg'}">${(c.net>=0?'+':'')+pc(c.net/PAID*100)}</b> `
+      +`sobre <b>${usd(PAID)}</b> · ${days} ${days===1?'día':'días'} dentro`;
+
+    const stale=Math.round((dayMs(today())-dayMs(cur.d))/86400000);
+    const src=localStorage.getItem('mineto:src');
+    $('stamp').textContent = stale<=0
+      ? (src==='auto' ? 'Polymarket · hoy' : src==='parcial' ? 'Parcial · hoy' : 'Hoy')
+      : `Dato del ${new Date(dayMs(cur.d)).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
+    $('stamp').className = 'stamp' + (stale>=2?' stale':'');
+
+    const r=c.net/PAID, ann=(Math.pow(1+r,365/days)-1)*100, annAbs=PAID*ann/100;
+    $('ann').innerHTML=`<span>Rendimiento anual neto</span>`
+      +`<span class="v ${ann>=0?'pos':'neg'}">${(ann>=0?'+':'')+pc(ann)}</span>`
+      +`<span style="opacity:.7">· ${sg(annAbs)} al año a este ritmo</span>`
+      +(days<30?`<span class="warn">Extrapolado desde ${days} ${days===1?'día':'días'}: una décima `
+        +`de punto del índice mueve esta cifra varios puntos porcentuales. No es fiable hasta pasado un par de meses.</span>`:'');
+
+    const gain=c.excessU>0, fundRet=(c.u/HWM_U-1)*100;
+    let comp='';
+    try{
+      const k=JSON.parse(localStorage.getItem('mineto:comp')||'null');
+      if(k&&k.d===cur.d) comp=`<div class="row"><span class="lbl">De dónde sale ese NAV<small>`
+        +`posiciones abiertas + colateral${k.parcial?' · saldo no legible, se usa el último conocido':' · '+(localStorage.getItem('mineto:cashdet')||'')}</small></span>`
+        +`<span class="val" style="font-size:12px">${usd0(k.pf)} + ${usd0(k.cash===null?storedCash():k.cash)}</span></div>`;
+    }catch(e){}
+    const mgmtRow = ms>=MGMT_FROM
+      ? `<div class="row"><span class="lbl">Management fee 2 % anual<small>${Math.floor(c.mgmtDays)} días devengados este año · índice neto ${uv(c.uNet)}</small></span>
+           <span class="val neg">−${usd(c.mgmt)}</span></div>` : '';
+
+    $('fall').innerHTML=`
+      <div class="row"><span class="lbl">Índice del fondo<small>base 100 el 1.1.2026 · NAV total ${usd0(c.nav)}</small></span>
+        <span class="val">${uv(c.u)}</span></div>
+      ${comp}
+      <div class="row"><span class="lbl">Índice a tu entrada<small>16.08.2026 · tu marca de agua</small></span>
+        <span class="val">${uv(HWM_U)}</span></div>
+      <div class="row step"><span class="lbl">Rentabilidad del fondo desde que entraste<small>antes de fees</small></span>
+        <span class="val ${fundRet>=0?'pos':'neg'}">${(fundRet>=0?'+':'')+pc(fundRet)}</span></div>
+      <div class="row"><span class="lbl">Tu capital por punto de índice<small>${usd(PAID)} ÷ ${uv(HWM_U)} · el 24,30 % del fondo</small></span>
+        <span class="val">${un(UNITS)}</span></div>
+      <div class="row step"><span class="lbl">Valor bruto de tu participación</span>
+        <span class="val">${usd(c.gross)}</span></div>
+      ${mgmtRow}
+      <div class="row"><span class="lbl">${gain?'Ganancia sujeta a fee':'Por debajo de la marca de agua'}<small>${(c.excessU>=0?'+':'')+uv(c.excessU)} puntos de índice</small></span>
+        <span class="val ${c.excessU>=0?'pos':'neg'}">${sg(c.excess)}</span></div>
+      <div class="row"><span class="lbl">Performance fee 20 %<small>${gain?'devengado a día de hoy':'no se devenga: recuperar pérdidas no paga fee'}</small></span>
+        <span class="val ${c.perf?'neg':''}">${c.perf?'−'+usd(c.perf):usd(0)}</span></div>
+      <div class="row final"><span class="lbl">Mi neto</span>
+        <span class="val ${c.net>=0?'pos':'neg'}">${sg(c.net)}</span></div>
+      <div class="row"><span class="lbl">Mi posición total<small>capital + neto si se liquidara hoy</small></span>
+        <span class="val">${usd(c.value)}</span></div>
+      <div class="row"><span class="lbl">Rendimiento anual neto<small>${(c.net>=0?'+':'')+pc(c.net/PAID*100)} en ${days} ${days===1?'día':'días'}, capitalizado a 365</small></span>
+        <span class="val ${ann>=0?'pos':'neg'}">${(ann>=0?'+':'')+pc(ann)}</span></div>`;
+
+    $('note').textContent=`${H.length} días registrados desde el 16 de agosto. Los seis primeros vienen de `
+      +`la columna H de tu hoja; el resto los has metido tú. El NAV se convierte a índice dividiendo `
+      +`entre ${un(TOTAL_UNITS)}, los dólares de NAV que corresponden a cada punto.`;
+    $('mv').placeholder=uv(c.u);
+    if(!$('cashv').value && storedCash()!==null) $('cashv').value=String(Math.round(storedCash()));
+    draw();
+  }
+
+  /* ===== acciones ===== */
+  $('save').onclick=()=>{
+    const n=parseNum($('mv').value);
+    if(n===null||n<=0){ $('mv').focus(); return; }
+    put(today(), toIndex(n)); localStorage.setItem('mineto:src','manual');
+    $('mv').value=''; render();
+  };
+  $('mv').addEventListener('keydown',e=>{ if(e.key==='Enter') $('save').click(); });
+  $('stamp').onclick=()=>refresh();
+
+  $('acepta').onclick=()=>{
+    if(!pendiente) return;
+    put(today(), pendiente.nav/TOTAL_UNITS);
+    localStorage.setItem(SRC_KEY, pendiente.parcial?'parcial':'auto');
+    localStorage.setItem('mineto:comp', JSON.stringify({d:today(),pf:pendiente.pf,cash:pendiente.cash,parcial:pendiente.parcial}));
+    pendiente=null; $('warn').hidden=true; render();
+  };
+  $('ignora').onclick=()=>{ pendiente=null; $('warn').hidden=true; };
+
+  $('cashsave').onclick=()=>{
+    const n=parseNum($('cashv').value);
+    if(n===null||n<0){ $('cashv').focus(); return; }
+    localStorage.setItem(CASH_KEY,String(n));
+    $('cashres').innerHTML=`<span class="pos">Efectivo fijado en ${usd(n)}.</span>`;
+    refresh();
+  };
+  $('delhoy').onclick=()=>{
+    const d=today();
+    if(!H.some(x=>x.d===d)){ $('cashres').innerHTML='<span style="color:var(--amber-dim)">Hoy no hay ningún dato guardado.</span>'; return; }
+    if(H.length<=1) return;
+    H=H.filter(x=>x.d!==d); persist(); render();
+    $('cashres').innerHTML='<span class="pos">Dato de hoy borrado.</span>';
+  };
+
+  $('imp').onclick=()=>{
+    const r=bulkImport($('bulk').value), el=$('impres');
+    if(!r.ok){ el.innerHTML='<span class="neg">No he podido leer ninguna fila. Necesito fecha y valor en cada línea.</span>'; return; }
+    el.innerHTML=`<span class="pos">${r.ok} ${r.ok===1?'día importado':'días importados'}.</span>`
+      +(r.bad?` <span style="color:var(--amber-dim)">${r.bad} ${r.bad===1?'línea ilegible':'líneas ilegibles'}.</span>`:'');
+    $('bulk').value=''; render();
+  };
+
+  $('exp').onclick=()=>{
+    const blob=new Blob([JSON.stringify({v:1,exported:new Date().toISOString(),hist:H},null,1)],
+                        {type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`mineto-${today()}.json`;
+    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    $('bakres').innerHTML=`<span class="pos">Exportados ${H.length} días.</span>`;
+  };
+  $('impfile').onclick=()=>$('file').click();
+  $('file').onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      const j=JSON.parse(await f.text());
+      const rows=Array.isArray(j)?j:(j.hist||[]);
+      const m=new Map(H.map(p=>[p.d,p.u]));
+      let n=0;
+      rows.forEach(p=>{ if(p&&/^\d{4}-\d{2}-\d{2}$/.test(p.d)&&isFinite(p.u)&&p.u>0){ m.set(p.d,p.u); n++; } });
+      if(!n) throw new Error('vacío');
+      H=[...m.entries()].map(([d,u])=>({d,u})).sort((a,b)=>a.d<b.d?-1:1);
+      persist(); render();
+      $('bakres').innerHTML=`<span class="pos">${n} días restaurados.</span>`;
+    }catch(err){
+      $('bakres').innerHTML='<span class="neg">Ese archivo no tiene el formato del respaldo.</span>';
+    }
+    e.target.value='';
+  };
+
+  load(); render(); refresh();
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
