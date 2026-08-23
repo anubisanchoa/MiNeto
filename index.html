@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#17338C">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest?v=8">
+<link rel="apple-touch-icon" href="icon-k192.png">
 <title>knradFund</title>
 <style>
   :root{
@@ -146,8 +146,11 @@
 <details>
   <summary>Histórico del fondo desde enero</summary>
   <div class="box">
-    <p>Intenta traer la curva completa del año probando varias direcciones de Polymarket. Si alguna responde, se calibra para que el 16 de agosto coincida con tu entrada (+51,67 %). Si ninguna funciona, el diagnóstico dirá cuál falló y por qué.</p>
-    <button class="go" id="backfill">Buscar histórico</button>
+    <p>Polymarket no publica la serie histórica: la curva del perfil se dibuja en el navegador y no se guarda. La única vía es leerla tú. Abre tu perfil, pon el gráfico en YTD, desliza el dedo y apunta el valor de la cartera en unas cuantas fechas —con una por semana o incluso por mes basta para que la curva tenga forma.</p>
+    <p>Pégalas abajo. Para fechas anteriores al 16 de agosto la app divide entre 433,94, que es lo que valía cada punto de índice cuando el fondo era más pequeño; a partir de tu entrada usa 573,24. Puedes mezclar fechas de antes y después sin preocuparte.</p>
+    <textarea id="bulkh" spellcheck="false" placeholder="01.02.2026&#9;52.400&#10;01.03.2026&#9;58.900&#10;01.04.2026&#9;61.200"></textarea>
+    <button class="go" id="imph">Importar curva</button>
+    <button id="backfill">Reintentar búsqueda automática</button>
     <div class="res" id="bfres"></div>
   </div>
 </details>
@@ -192,7 +195,7 @@
 
 <script>
 (() => {
-  const VERSION='v7';
+  const VERSION='v8';
 
   /* ===== datos de partida ===== */
   // índice base 100 el 1.1.2026. Los seis de agosto vienen de la hoja del fondo.
@@ -210,6 +213,8 @@
   /* ===== el acuerdo ===== */
   const PAID=21129.00, HWM_U=151.67, UNITS=PAID/HWM_U, TOTAL_UNITS=86944.01/HWM_U;
   const PERF=0.20, MGMT=0.02, MGMT_FROM=Date.UTC(2027,0,1);
+  // dólares de NAV por punto de índice: antes de tu entrada el fondo era más pequeño
+  const PRE_UNITS=433.94;
 
   const WALLET='0x4d0121458bb2f96c6440c0f3835d675ad3ce1645';
   const POSITIONS=`https://data-api.polymarket.com/positions?user=${WALLET}&limit=500&sizeThreshold=0.1`;
@@ -565,7 +570,10 @@
     else if(ld>-1&&s.length-ld-1===3&&s.split('.').length>2){ s=s.replace(/\./g,''); }
     const n=parseFloat(s); return isFinite(n)?n:null;
   }
-  const aIndice=n=>n>1000?n/TOTAL_UNITS:n;
+  const aIndice=(n,t)=>{
+    if(n<=1000) return n;                       // ya es índice
+    return n / (t && t < ENTRADA_S ? PRE_UNITS : TOTAL_UNITS);
+  };
 
   function importar(texto){
     let ok=0, bad=0;
@@ -578,7 +586,7 @@
       const hora=p.length>2 && /^\d{1,2}:\d{2}$/.test(p[1]) ? p[1] : '12:00';
       const t=Math.floor(new Date(`${f}T${hora.padStart(5,'0')}:00Z`).getTime()/1000);
       if(!isFinite(t)){ bad++; continue; }
-      put(t, aIndice(n)); ok++;
+      put(t, aIndice(n,t)); ok++;
     }
     return {ok,bad};
   }
@@ -591,11 +599,19 @@
   };
   $('stamp').onclick=()=>refresh();
   $('backfill').onclick=()=>backfill();
+  $('imph').onclick=()=>{
+    const r=importar($('bulkh').value);
+    $('bfres').innerHTML = r.ok
+      ? `<span class="pos">${r.ok} ${r.ok===1?'punto añadido':'puntos añadidos'} a la curva.</span>`
+        +(r.bad?` <span style="color:var(--amber-dim)">${r.bad} ilegibles.</span>`:'')
+      : '<span class="neg">No he podido leer ninguna línea.</span>';
+    if(r.ok){ $('bulkh').value=''; render(); }
+  };
   $('copiar').onclick=()=>navigator.clipboard.writeText(LOG.join('\n')).then(
     ()=>{ $('copiar').textContent='Copiado'; setTimeout(()=>$('copiar').textContent='Copiar',2000); },()=>{});
   $('save').onclick=()=>{
     const n=parseNum($('mv').value); if(n===null||n<=0){ $('mv').focus(); return; }
-    put(nowS(), aIndice(n)); localStorage.setItem(SRC_KEY,'manual'); $('mv').value=''; render();
+    put(nowS(), aIndice(n,nowS())); localStorage.setItem(SRC_KEY,'manual'); $('mv').value=''; render();
   };
   $('imp').onclick=()=>{
     const r=importar($('bulk').value);
