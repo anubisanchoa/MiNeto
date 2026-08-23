@@ -1,5 +1,5 @@
-const CACHE = "knrad-v8";;
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-k192.png', './icon-k512.png'];
+const CACHE = "knrad-v9";;
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-k192.png', './icon-k512.png', './seed.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

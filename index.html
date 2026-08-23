@@ -195,19 +195,17 @@
 
 <script>
 (() => {
-  const VERSION='v8';
+  const VERSION='v9';
 
-  /* ===== datos de partida ===== */
-  // índice base 100 el 1.1.2026. Los seis de agosto vienen de la hoja del fondo.
-  const SEED=[
+  /* ===== datos de partida =====
+     La base histórica vive en seed.json, junto a index.html. Se carga como
+     cimiento: cualquier lectura propia guardada en el móvil tiene prioridad
+     sobre ella, así que actualizar seed.json nunca pisa tus datos.          */
+  const SEED_MINIMO=[            // por si seed.json no está disponible
     {d:'2026-01-01', u:100.00},
-    {d:'2026-08-16', u:151.67},
-    {d:'2026-08-17', u:151.33},
-    {d:'2026-08-18', u:151.20},
-    {d:'2026-08-19', u:151.43},
-    {d:'2026-08-20', u:151.39},
-    {d:'2026-08-21', u:151.85}
+    {d:'2026-08-16', u:151.67}
   ];
+  let SEED=SEED_MINIMO.slice();
   const ENTRADA='2026-08-16';
 
   /* ===== el acuerdo ===== */
@@ -277,7 +275,7 @@
       if(Array.isArray(viejo)&&viejo.length&&!saved.length)
         saved=viejo.filter(p=>p&&p.d&&isFinite(p.u)).map(p=>({t:dS(p.d),u:p.u}));
     }catch(e){}
-    const m=new Map(SEED.map(p=>[dS(p.d),p.u]));
+    const m=new Map(SEED.map(p=> p.t ? [p.t,p.u] : [dS(p.d),p.u]));
     saved.forEach(p=>{ if(p&&isFinite(p.t)&&isFinite(p.u)&&p.u>0) m.set(p.t,p.u); });
     H=[...m.entries()].map(([t,u])=>({t,u})).sort((a,b)=>a.t-b.t);
   }
@@ -286,6 +284,18 @@
     // dos lecturas en menos de 5 min se funden en una
     H=H.filter(p=>Math.abs(p.t-t)>300);
     H.push({t,u}); H.sort((a,b)=>a.t-b.t); persist();
+  }
+
+  async function cargarSemilla(){
+    try{
+      const r=await fetch('seed.json',{cache:'no-cache'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      const arr=Array.isArray(j)?j:(j.hist||[]);
+      const ok=arr.filter(p=>p&&isFinite(p.u)&&p.u>0&&(isFinite(p.t)||p.d));
+      if(ok.length){ SEED=ok; log(`seed.json: ${ok.length} lecturas de base`); return true; }
+    }catch(e){ log('seed.json: '+e.message); }
+    return false;
   }
 
   /* ===== red ===== */
@@ -668,7 +678,11 @@
     }
     [HKEY,CASH_KEY,SRC_KEY,'knrad:comp','knrad:cashdet','mineto:hist'].forEach(k=>localStorage.removeItem(k));
     $('reset').dataset.armed='0'; $('reset').textContent='Reiniciar histórico';
-    load(); render(); refresh();
+    (async () => {
+    load(); render();                 // pinta ya con lo que haya en el móvil
+    if(await cargarSemilla()){ load(); render(); }
+    refresh();
+  })();
     $('cashres').innerHTML='<span class="pos">Histórico reiniciado.</span>';
   };
 
