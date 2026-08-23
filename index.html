@@ -195,17 +195,34 @@
 
 <script>
 (() => {
-  const VERSION='v9';
+  const VERSION='v10';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
      cimiento: cualquier lectura propia guardada en el móvil tiene prioridad
      sobre ella, así que actualizar seed.json nunca pisa tus datos.          */
-  const SEED_MINIMO=[            // por si seed.json no está disponible
-    {d:'2026-01-01', u:100.00},
-    {d:'2026-08-16', u:151.67}
-  ];
-  let SEED=SEED_MINIMO.slice();
+  // Base histórica incrustada: 2 ene – 23 ago 2026. Reconstruida del PnL de
+  // Polymarket hasta el 14.08 y exacta desde el 16.08. seed.json, si está
+  // disponible, la sustituye; si no, esto garantiza que la app arranca con año.
+  const SEED_MINIMO=[
+    [1767225600,100.0],[1767268800,100],[1767312000,100.0488],
+    [1768348800,98.1704],[1768780800,99.6672],[1769817600,102.6717],
+    [1771027200,104.9873],[1772409600,101.5346],[1772755200,103.7181],
+    [1772841600,104.6283],[1773100800,124.9709],[1773619200,114.0469],
+    [1775606400,118.8108],[1777420800,117.5974],[1778371200,124.1017],
+    [1778803200,127.425],[1780012800,131.8474],[1780358400,133.9987],
+    [1780704000,130.4498],[1781481600,131.6812],[1782172800,138.7583],
+    [1783987200,142.847],[1784592000,143.9223],[1784764800,144.3046],
+    [1784937600,145.9362],[1785283200,147.8898],[1785369600,147.5957],
+    [1785542400,148.4408],[1785715200,149.8944],[1785888000,149.9011],
+    [1785974400,150.1623],[1786233600,150.2079],[1786492800,150.5896],
+    [1786665600,150.9956],[1786881600,151.67],[1786968000,151.33],
+    [1787054400,151.2],[1787140800,151.43],[1787227200,151.39],
+    [1787313600,151.85],[1787391615,151.77061458057],[1787400000,151.72845666128381],
+    [1787402987,152.0170167229258],[1787436221,152.14498635180527],[1787484251,152.22156486163087],
+    [1787499916,152.1620888902833]
+  ].map(([t,u])=>({t,u}));
+  let SEED=SEED_MINIMO.slice(), semillaExterna=false;
   const ENTRADA='2026-08-16';
 
   /* ===== el acuerdo ===== */
@@ -293,7 +310,7 @@
       const j=await r.json();
       const arr=Array.isArray(j)?j:(j.hist||[]);
       const ok=arr.filter(p=>p&&isFinite(p.u)&&p.u>0&&(isFinite(p.t)||p.d));
-      if(ok.length){ SEED=ok; log(`seed.json: ${ok.length} lecturas de base`); return true; }
+      if(ok.length){ SEED=ok; semillaExterna=true; log(`seed.json: ${ok.length} lecturas de base`); return true; }
     }catch(e){ log('seed.json: '+e.message); }
     return false;
   }
@@ -370,7 +387,7 @@
   }
 
   async function refresh(){
-    LOG=[]; log(`— ${new Date().toLocaleTimeString('es-ES')} · ${VERSION} —`);
+    log(`— ${new Date().toLocaleTimeString('es-ES')} · ${VERSION} —`);
     $('stamp').textContent='Consultando…'; $('stamp').className='stamp';
     $('fallback').hidden=true;
     try{
@@ -556,7 +573,8 @@
       <div class="row final"><span class="lbl">Mi neto</span>
         <span class="val ${c.net>=0?'pos':'neg'}">${sg(c.net)}</span></div>`;
 
-    $('note').innerHTML=`${H.length} lecturas guardadas. `
+    $('note').innerHTML=`${H.length} lecturas · ${SEED.length} de base `
+      +`(${semillaExterna?'seed.json':'incrustadas'}). `
       +`<span style="color:var(--amber-dim)">knradFund ${VERSION}</span>`;
     if(!$('cashv').value && storedCash()!==null) $('cashv').value=String(Math.round(storedCash()));
     draw();
