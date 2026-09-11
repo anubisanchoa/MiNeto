@@ -134,6 +134,13 @@
 <h2>Desglose</h2>
 <div class="fall" id="fall"></div>
 
+<div id="warn" hidden style="border:1px solid var(--amber-dim);border-radius:12px;padding:13px;margin-top:16px;background:#14100A">
+  <div class="eyebrow" style="color:var(--amber)">Lectura sin registrar</div>
+  <p id="warntxt" style="font-size:12px;color:var(--muted);line-height:1.55;margin:8px 0 10px"></p>
+  <button id="acepta" style="background:var(--amber);color:#0A1218;border:0;border-radius:8px;padding:10px 16px;font-size:12.5px;font-weight:600;cursor:pointer;margin-right:8px">Registrarla igual</button>
+  <button id="ignora" style="background:none;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:12.5px;cursor:pointer">Descartar</button>
+</div>
+
 <div id="fallback" hidden>
   <p class="note" style="color:var(--amber-dim);margin:14px 0 8px">No he podido leer la cartera. Mete el dato a mano o reintenta tocando la etiqueta de arriba.</p>
   <div class="manual">
@@ -195,7 +202,7 @@
 
 <script>
 (() => {
-  const VERSION='v10';
+  const VERSION='v11';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -372,24 +379,36 @@
 
   let pendiente=null;
   function proponer(nav,pf,cash,parcial){
-    const previos=H.filter(p=>p.t < nowS()-3600);
+    const ahora=nowS();
+    const previos=H.filter(p=>p.t < ahora-3600);
     const ref=previos.length?previos[previos.length-1]:H[H.length-1];
     const dif=(nav-ref.u*TOTAL_UNITS)/(ref.u*TOTAL_UNITS);
-    if(Math.abs(dif)>0.025){
+    const dias=Math.max(0,(ahora-ref.t)/86400);
+    // margen: 3 % de partida más 2,5 % por cada día sin lectura, tope 25 %
+    const tope=Math.min(0.25, 0.03 + 0.025*dias);
+    if(Math.abs(dif)>tope){
       pendiente={nav,pf,cash,parcial};
-      log(`desviación ${(dif*100).toFixed(2)} % sobre la referencia: no registrado`);
+      const cuando=new Date(ref.t*1000).toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+      $('warn').hidden=false;
+      $('warntxt').innerHTML=`El NAV leído (<b>${usd0(nav)}</b>) se aparta un `
+        +`<b>${sgpc(dif*100)}</b> del ${cuando} (${usd0(ref.u*TOTAL_UNITS)}), por encima del `
+        +`margen de ${pc(tope*100)} para ${dias.toFixed(1)} días. `
+        +`Posiciones ${usd0(pf)} + colateral ${cash===null?'no leído':usd0(cash)}. `
+        +`Compruébalo en Polymarket y decide.`;
+      log(`desviación ${(dif*100).toFixed(2)} % (margen ${(tope*100).toFixed(1)} %): pendiente de confirmar`);
       return false;
     }
-    put(nowS(), nav/TOTAL_UNITS);
+    put(ahora, nav/TOTAL_UNITS);
     localStorage.setItem(SRC_KEY, parcial?'parcial':'auto');
-    localStorage.setItem('knrad:comp', JSON.stringify({t:nowS(),pf,cash,parcial}));
+    localStorage.setItem('knrad:comp', JSON.stringify({t:ahora,pf,cash,parcial}));
+    $('warn').hidden=true; pendiente=null;
     return true;
   }
 
   async function refresh(){
     log(`— ${new Date().toLocaleTimeString('es-ES')} · ${VERSION} —`);
     $('stamp').textContent='Consultando…'; $('stamp').className='stamp';
-    $('fallback').hidden=true;
+    $('fallback').hidden=true; $('warn').hidden=true;
     try{
       const pf=await fetchPortfolio();
       const cash=await fetchCash();
@@ -626,6 +645,17 @@
     rango=b.dataset.r; draw();
   };
   $('stamp').onclick=()=>refresh();
+  $('acepta').onclick=()=>{
+    if(!pendiente) return;
+    const t=nowS();
+    put(t, pendiente.nav/TOTAL_UNITS);
+    localStorage.setItem(SRC_KEY, pendiente.parcial?'parcial':'auto');
+    localStorage.setItem('knrad:comp', JSON.stringify({t,pf:pendiente.pf,cash:pendiente.cash,parcial:pendiente.parcial}));
+    pendiente=null; $('warn').hidden=true; render();
+    $('stamp').textContent='Polymarket · '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+    $('stamp').className='stamp';
+  };
+  $('ignora').onclick=()=>{ pendiente=null; $('warn').hidden=true; };
   $('backfill').onclick=()=>backfill();
   $('imph').onclick=()=>{
     const r=importar($('bulkh').value);
