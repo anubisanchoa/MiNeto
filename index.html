@@ -208,7 +208,7 @@
 
 <script>
 (() => {
-  const VERSION='v13';
+  const VERSION='v14';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -261,7 +261,8 @@
     `https://data-api.polymarket.com/portfolio-value-history?user=${WALLET}&interval=all&fidelity=1440`,
     `https://data-api.polymarket.com/user-historical?user=${WALLET}&interval=all&fidelity=1440`
   ];
-  const HKEY='knrad:hist', CASH_KEY='knrad:cash', SRC_KEY='knrad:src';
+  const HKEY='knrad:hist', CASH_KEY='knrad:cash', SRC_KEY='knrad:src', PERPS_KEY='knrad:perps';
+  const perpsGuardado=()=>{ const v=parseFloat(localStorage.getItem(PERPS_KEY)); return isFinite(v)?v:0; };
 
   const $=i=>document.getElementById(i);
   const usd=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n||0);
