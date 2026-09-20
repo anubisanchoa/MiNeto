@@ -189,6 +189,12 @@
       <input id="cashv" inputmode="decimal">
       <button id="cashsave">Fijar</button>
     </div>
+    <p style="margin-top:14px">Valor de la cuenta de <b>Perps</b>. La API pública no lo expone: míralo en la pestaña Perps del perfil y actualízalo de vez en cuando. Déjalo en 0 si el fondo no opera perpetuos.</p>
+    <div class="manual" style="margin-top:0">
+      <label for="perpsv">Perps</label>
+      <input id="perpsv" inputmode="decimal">
+      <button id="perpssave">Fijar</button>
+    </div>
     <p style="margin-top:14px">Los datos viven en este móvil. Exporta de vez en cuando.</p>
     <button class="go" id="exp">Exportar</button>
     <button id="impfile">Restaurar</button>
@@ -202,7 +208,7 @@
 
 <script>
 (() => {
-  const VERSION='v11';
+  const VERSION='v13';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -338,12 +344,40 @@
     throw last||new Error('sin respuesta');
   }
   async function fetchPortfolio(){
-    const j=await getJSON(POSITIONS);
-    if(!Array.isArray(j)) throw new Error('respuesta inesperada');
-    const v=j.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
-    log(`posiciones: ${j.length} mercados, ${v.toFixed(2)} $`);
-    return v;
+    const B='https://data-api.polymarket.com';
+    // 1 · todas las posiciones, sin umbral de tamaño y paginando
+    let todas=[], offset=0;
+    for(let i=0;i<8;i++){
+      const j=await getJSON(`${B}/positions?user=${WALLET}&limit=500&offset=${offset}&sizeThreshold=0`);
+      if(!Array.isArray(j)) throw new Error('respuesta inesperada');
+      todas=todas.concat(j);
+      if(j.length<500) break;
+      offset+=500;
+    }
+    const suma=todas.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+    const cobr=todas.filter(p=>p.redeemable)
+                    .reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+    const cero=todas.filter(p=>!(Number(p.currentValue)>0)).length;
+    log(`posiciones: ${todas.length} mercados, ${suma.toFixed(2)} $`
+        +(cobr?` (${cobr.toFixed(0)} cobrables)`:'')
+        +(cero?` · ${cero} sin valor`:''));
+
+    // 2 · contraste con el total que publica la propia API
+    let oficial=null;
+    try{
+      const v=await getJSON(`${B}/value?user=${WALLET}`);
+      const n=Array.isArray(v)?Number(v[0]&&v[0].value):Number(v&&v.value);
+      if(isFinite(n)&&n>0){ oficial=n; log(`/value dice ${n.toFixed(2)} $`); }
+      else log('/value sin cifra utilizable');
+    }catch(e){ log('/value: '+e.message); }
+
+    if(oficial!==null && Math.abs(oficial-suma)/Math.max(suma,1) > 0.005){
+      log(`discrepancia de ${(oficial-suma).toFixed(2)} $ → me quedo con /value`);
+      return oficial;
+    }
+    return suma;
   }
+
   async function fetchCash(){
     const call='0x70a08231000000000000000000000000'+WALLET.slice(2);
     for(const rpc of RPCS){
@@ -378,7 +412,7 @@
   const storedCash=()=>{ const v=parseFloat(localStorage.getItem(CASH_KEY)); return isFinite(v)?v:null; };
 
   let pendiente=null;
-  function proponer(nav,pf,cash,parcial){
+  function proponer(nav,pf,cash,parcial,perps){
     const ahora=nowS();
     const previos=H.filter(p=>p.t < ahora-3600);
     const ref=previos.length?previos[previos.length-1]:H[H.length-1];
@@ -387,7 +421,7 @@
     // margen: 3 % de partida más 2,5 % por cada día sin lectura, tope 25 %
     const tope=Math.min(0.25, 0.03 + 0.025*dias);
     if(Math.abs(dif)>tope){
-      pendiente={nav,pf,cash,parcial};
+      pendiente={nav,pf,cash,parcial,perps};
       const cuando=new Date(ref.t*1000).toLocaleDateString('es-ES',{day:'numeric',month:'short'});
       $('warn').hidden=false;
       $('warntxt').innerHTML=`El NAV leído (<b>${usd0(nav)}</b>) se aparta un `
@@ -400,7 +434,7 @@
     }
     put(ahora, nav/TOTAL_UNITS);
     localStorage.setItem(SRC_KEY, parcial?'parcial':'auto');
-    localStorage.setItem('knrad:comp', JSON.stringify({t:ahora,pf,cash,parcial}));
+    localStorage.setItem('knrad:comp', JSON.stringify({t:ahora,pf,cash,parcial,perps}));
     $('warn').hidden=true; pendiente=null;
     return true;
   }
@@ -415,9 +449,12 @@
       if(cash!==null) localStorage.setItem(CASH_KEY,String(cash));
       const usado=cash!==null?cash:storedCash();
       if(usado===null){ log('sin efectivo fiable: no registro'); throw new Error('sin saldo'); }
-      const nav=pf+usado;
-      log(`NAV = ${pf.toFixed(2)} + ${usado.toFixed(2)} = ${nav.toFixed(2)} → ${(nav/TOTAL_UNITS).toFixed(2)}`);
-      const ok=proponer(nav,pf,cash,cash===null);
+      const perps=perpsGuardado();
+      const nav=pf+usado+perps;
+      log(`NAV = ${pf.toFixed(2)} predicciones + ${usado.toFixed(2)} colateral`
+          +(perps?` + ${perps.toFixed(2)} perps`:' (perps sin fijar)')
+          +` = ${nav.toFixed(2)} → ${(nav/TOTAL_UNITS).toFixed(2)}`);
+      const ok=proponer(nav,pf,cash,cash===null,perps);
       render();
       $('stamp').textContent = !ok ? 'Revisar' : (cash===null?'Parcial':'Polymarket')+' · '
         + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
@@ -567,8 +604,9 @@
     try{
       const k=JSON.parse(localStorage.getItem('knrad:comp')||'null');
       if(k&&Math.abs(k.t-cur.t)<3600) comp=`<div class="row"><span class="lbl">De dónde sale ese NAV<small>`
-        +`posiciones + colateral${k.parcial?' · saldo no legible':' · '+(localStorage.getItem('knrad:cashdet')||'')}</small></span>`
-        +`<span class="val" style="font-size:12px">${usd0(k.pf)} + ${usd0(k.cash===null?storedCash():k.cash)}</span></div>`;
+        +`predicciones + colateral${k.perps?' + perps':''}${k.parcial?' · saldo no legible':''}</small></span>`
+        +`<span class="val" style="font-size:12px">${usd0(k.pf)} + ${usd0(k.cash===null?storedCash():k.cash)}`
+        +`${k.perps?' + '+usd0(k.perps):''}</span></div>`;
     }catch(e){}
     const mgmtRow = ms>=MGMT_FROM
       ? `<div class="row"><span class="lbl">Management fee 2 % anual<small>${Math.floor(c.mgmtDays)} días devengados este año</small></span>
@@ -596,6 +634,7 @@
       +`(${semillaExterna?'seed.json':'incrustadas'}). `
       +`<span style="color:var(--amber-dim)">knradFund ${VERSION}</span>`;
     if(!$('cashv').value && storedCash()!==null) $('cashv').value=String(Math.round(storedCash()));
+    if(!$('perpsv').value) $('perpsv').value=String(Math.round(perpsGuardado()));
     draw();
   }
 
@@ -650,7 +689,7 @@
     const t=nowS();
     put(t, pendiente.nav/TOTAL_UNITS);
     localStorage.setItem(SRC_KEY, pendiente.parcial?'parcial':'auto');
-    localStorage.setItem('knrad:comp', JSON.stringify({t,pf:pendiente.pf,cash:pendiente.cash,parcial:pendiente.parcial}));
+    localStorage.setItem('knrad:comp', JSON.stringify({t,pf:pendiente.pf,cash:pendiente.cash,parcial:pendiente.parcial,perps:pendiente.perps}));
     pendiente=null; $('warn').hidden=true; render();
     $('stamp').textContent='Polymarket · '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
     $('stamp').className='stamp';
@@ -678,6 +717,11 @@
         +(r.bad?` <span style="color:var(--amber-dim)">${r.bad} ilegibles.</span>`:'')
       : '<span class="neg">No he podido leer ninguna línea.</span>';
     if(r.ok){ $('bulk').value=''; render(); }
+  };
+  $('perpssave').onclick=()=>{
+    const n=parseNum($('perpsv').value); if(n===null||n<0) return;
+    localStorage.setItem(PERPS_KEY,String(n));
+    $('cashres').innerHTML=`<span class="pos">Perps fijado en ${usd(n)}.</span>`; refresh();
   };
   $('cashsave').onclick=()=>{
     const n=parseNum($('cashv').value); if(n===null||n<0) return;
