@@ -119,6 +119,7 @@
   <button data-r="1d">1 día</button>
   <button data-r="1w">1 sem</button>
   <button data-r="1m" aria-pressed="true">1 mes</button>
+  <button data-r="ent">Mi entrada</button>
   <button data-r="ytd">YTD</button>
   <button data-r="1y">1 año</button>
   <button data-r="all">Todo</button>
@@ -237,7 +238,7 @@
 
 <script>
 (() => {
-  const VERSION='v21';
+  const VERSION='v22';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -556,14 +557,16 @@
     '1d':{s:86400,   fmt:{hour:'2-digit',minute:'2-digit'}},
     '1w':{s:604800,  fmt:{day:'numeric',month:'short'}},
     '1m':{s:2592000, fmt:{day:'numeric',month:'short'}},
+    'ent':{entrada:true, fmt:{day:'numeric',month:'short'}},
     'ytd':{ytd:true, fmt:{day:'numeric',month:'short'}},
     '1y':{s:31536000,fmt:{month:'short'}},
     'all':{s:Infinity,fmt:{month:'short',year:'2-digit'}}
   };
   function puntosRango(){
     const cfg=RANGOS[rango], ahora=nowS();
-    let desde = cfg.ytd ? Math.floor(Date.UTC(new Date().getUTCFullYear(),0,1)/1000)
-                        : (cfg.s===Infinity ? 0 : ahora-cfg.s);
+    let desde = cfg.entrada ? ENTRADA_S
+              : cfg.ytd     ? Math.floor(Date.UTC(new Date().getUTCFullYear(),0,1)/1000)
+              : (cfg.s===Infinity ? 0 : ahora-cfg.s);
     let p=H.filter(x=>x.t>=desde);
     if(p.length<2) p=H.slice(-2);
     if(p.length>250){ const n=Math.ceil(p.length/250); p=p.filter((_,i)=>i%n===0||i===p.length-1); }
