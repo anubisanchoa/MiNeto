@@ -118,8 +118,8 @@
 <div class="ranges" id="ranges">
   <button data-r="1d">1 día</button>
   <button data-r="1w">1 sem</button>
-  <button data-r="1m" aria-pressed="true">1 mes</button>
-  <button data-r="ent">Mi entrada</button>
+  <button data-r="1m">1 mes</button>
+  <button data-r="ent" aria-pressed="true">Mi entrada</button>
   <button data-r="ytd">YTD</button>
   <button data-r="1y">1 año</button>
   <button data-r="all">Todo</button>
@@ -238,7 +238,7 @@
 
 <script>
 (() => {
-  const VERSION='v22';
+  const VERSION='v23';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -352,7 +352,7 @@
   }
 
   /* ===== histórico: [{t: segundos, u: índice}] ===== */
-  let H=[], rango='1m';
+  let H=[], rango='ent';
   function load(){
     let saved=[];
     try{ saved=JSON.parse(localStorage.getItem(HKEY)||'[]'); }catch(e){}
