@@ -163,6 +163,15 @@
 </details>
 
 <details>
+  <summary>Cobros y conversiones</summary>
+  <div class="box">
+    <p>La web no muestra ni los cobros ni las conversiones, pero la API sí. Busca sobre todo el <b>REDEEM del Nobel</b>: fecha e importe exactos de cuándo se cobró el side pocket.</p>
+    <button class="go" id="conv">Buscar cobros y conversiones</button>
+    <div class="res" id="convres"></div>
+  </div>
+</details>
+
+<details>
   <summary>Diagnóstico de la última consulta</summary>
   <div class="box">
     <pre id="diag"></pre>
@@ -189,6 +198,26 @@
       <input id="cashv" inputmode="decimal">
       <button id="cashsave">Fijar</button>
     </div>
+    <p><b>Side pocket</b> (MOU §6). La posición no listada «Yes — Other» del Nobel, 6.462,88 participaciones, es 100 % del gestor y queda fuera del NAV. La API de Polymarket ya la deja fuera sola, porque no tiene precio: no hay que hacer nada. Los candidatos listados sí son parte del fondo común y te corresponden (§6.2).</p>
+    <p>Este campo es para <b>futuros</b> side pockets con capital común (§6.4). Vacío = nada excluido, que es lo correcto hoy.</p>
+    <div class="manual" style="margin-top:0">
+      <label for="exclv">Excluir</label>
+      <input id="exclv" placeholder="(vacío)">
+      <button id="exclsave">Fijar</button>
+    </div>
+    <p><b>Cobro del side pocket</b> pendiente en el monedero. Ponlo a <b>0</b> en cuanto tu hermano lo retire o lo reinvierta. Si lo reinvierte, además hay que subir las unidades totales.</p>
+    <div class="manual" style="margin-top:0">
+      <label for="sidev">Side pocket</label>
+      <input id="sidev" inputmode="decimal">
+      <button id="sidesave">Fijar</button>
+    </div>
+
+    <p style="margin-top:14px"><b>Unidades totales del fondo.</b> Tu porcentaje sale de dividir tus 139,3090 unidades entre este número. Solo cambia si se emiten unidades nuevas —por ejemplo si el gestor reinvierte el side pocket (MOU §6.6)— o si alguien amortiza. Si no ha pasado nada, déjalo como está.</p>
+    <div class="manual" style="margin-top:0">
+      <label for="unitsv">Unidades</label>
+      <input id="unitsv" inputmode="decimal">
+      <button id="unitssave">Fijar</button>
+    </div>
     <p style="margin-top:14px">Valor de la cuenta de <b>Perps</b>. La API pública no lo expone: míralo en la pestaña Perps del perfil y actualízalo de vez en cuando. Déjalo en 0 si el fondo no opera perpetuos.</p>
     <div class="manual" style="margin-top:0">
       <label for="perpsv">Perps</label>
@@ -208,7 +237,7 @@
 
 <script>
 (() => {
-  const VERSION='v14';
+  const VERSION='v21';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -241,6 +270,14 @@
   /* ===== el acuerdo ===== */
   const PAID=21129.00, HWM_U=151.67, UNITS=PAID/HWM_U, TOTAL_UNITS=86944.01/HWM_U;
   const PERF=0.20, MGMT=0.02, MGMT_FROM=Date.UTC(2027,0,1);
+  const NAV_ENTRADA=86944.01;           // NAV del fondo el 16.08.2026
+  const MIS_UNIDADES=PAID/HWM_U;        // 139,3090 · fijas mientras no aportes ni retires
+  const UNIDADES_BASE=NAV_ENTRADA/HWM_U;// 573,2446 · las del fondo el día de tu entrada
+  // El total cambia si se emiten unidades nuevas (p. ej. si el gestor reinvierte
+  // los 6.462,88 del side pocket, MOU §6.6) o si alguien amortiza. Editable.
+  const totalUnidades=()=>{ const v=parseFloat(localStorage.getItem(UNITS_KEY));
+                            return isFinite(v)&&v>0?v:UNIDADES_BASE; };
+  const fraccion=()=>MIS_UNIDADES/totalUnidades();
   // dólares de NAV por punto de índice: antes de tu entrada el fondo era más pequeño
   const PRE_UNITS=433.94;
 
@@ -261,13 +298,30 @@
     `https://data-api.polymarket.com/portfolio-value-history?user=${WALLET}&interval=all&fidelity=1440`,
     `https://data-api.polymarket.com/user-historical?user=${WALLET}&interval=all&fidelity=1440`
   ];
-  const HKEY='knrad:hist', CASH_KEY='knrad:cash', SRC_KEY='knrad:src', PERPS_KEY='knrad:perps';
+  const HKEY='knrad:hist', CASH_KEY='knrad:cash', SRC_KEY='knrad:src', PERPS_KEY='knrad:perps', EXCL_KEY='knrad:excl', UNITS_KEY='knrad:units', SIDE_KEY='knrad:side';
+  // mercados excluidos de tu participación por el MOU (Nobel de la Paz):
+  // el gestor convierte posiciones y deja participaciones en "Other", sin precio
+  // de mercado, lo que hace ese valor incuantificable.
+  const exclusiones=()=>(localStorage.getItem(EXCL_KEY)||'')
+      .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const esExcluida=p=>{
+    const ex=exclusiones(); if(!ex.length) return false;
+    const t=((p.title||'')+' '+(p.slug||'')).toLowerCase();
+    return ex.some(k=>t.includes(k));
+  };
+  // Cobro del side pocket (MOU §6.2): está en el mismo monedero pero es 100% del
+  // gestor. Se resta del NAV hasta que lo retire (baja el saldo solo -> poner 0)
+  // o lo reinvierta (poner 0 y subir las unidades totales).
+  const sidePendiente=()=>{ const v=localStorage.getItem(SIDE_KEY);
+                            const n=v===null?6462.88:parseFloat(v);
+                            return isFinite(n)&&n>0?n:0; };
   const perpsGuardado=()=>{ const v=parseFloat(localStorage.getItem(PERPS_KEY)); return isFinite(v)?v:0; };
 
   const $=i=>document.getElementById(i);
   const usd=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n||0);
   const usd0=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n||0);
   const pc=n=>new Intl.NumberFormat('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0)+' %';
+  const un=n=>new Intl.NumberFormat('es-ES',{minimumFractionDigits:4,maximumFractionDigits:4}).format(n||0);
   const sgpc=n=>(n>=0?'+':'')+pc(n);
   const sg=n=>(n>0?'+':'')+usd(n);
   const esc=s=>String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
@@ -280,18 +334,20 @@
 
   /* ===== cálculo ===== */
   function calc(u, ms){
-    const gross=UNITS*u;
+    const nav=u*TOTAL_UNITS;                       // NAV que corresponde a este índice
+    const gross=fraccion()*nav;                    // valor bruto de tu participación
     let mgmt=0, mgmtDays=0;
     if(ms>=MGMT_FROM){
       const ys=Date.UTC(new Date(ms).getUTCFullYear(),0,1);
       mgmtDays=(ms-Math.max(MGMT_FROM,ys))/86400000;
       mgmt=gross*MGMT*(mgmtDays/365);
     }
-    const uNet=(gross-mgmt)/UNITS, excessU=uNet-HWM_U;
-    const perf=excessU>0?UNITS*excessU*PERF:0;
-    const value=gross-mgmt-perf;
-    return {u,uNet,gross,mgmt,mgmtDays,excessU,excess:UNITS*excessU,perf,value,
-            net:value-PAID, nav:u*TOTAL_UNITS};
+    const afterMgmt=gross-mgmt;
+    const excess=afterMgmt-PAID;                   // marca de agua: lo que desembolsaste
+    const perf=excess>0?excess*PERF:0;
+    const value=afterMgmt-perf;
+    return {u,uNet:u,gross,mgmt,mgmtDays,excess,excessU:excess/Math.max(UNITS,1e-9),
+            perf,value,net:value-PAID,nav};
   }
 
   /* ===== histórico: [{t: segundos, u: índice}] ===== */
@@ -355,13 +411,13 @@
       if(j.length<500) break;
       offset+=500;
     }
-    const suma=todas.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
-    const cobr=todas.filter(p=>p.redeemable)
-                    .reduce((s,p)=>s+(Number(p.currentValue)||0),0);
-    const cero=todas.filter(p=>!(Number(p.currentValue)>0)).length;
-    log(`posiciones: ${todas.length} mercados, ${suma.toFixed(2)} $`
-        +(cobr?` (${cobr.toFixed(0)} cobrables)`:'')
-        +(cero?` · ${cero} sin valor`:''));
+    const excl=todas.filter(esExcluida);
+    const resto=todas.filter(p=>!esExcluida(p));
+    const sumaExcl=excl.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+    const sumaResto=resto.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
+    const suma=sumaExcl+sumaResto;
+    log(`posiciones: ${todas.length} mercados, ${suma.toFixed(2)} $`);
+    if(excl.length) log(`excluidas (${exclusiones().join(', ')}): ${excl.length} posiciones, ${sumaExcl.toFixed(2)} $`);
 
     // 2 · contraste con el total que publica la propia API
     let oficial=null;
@@ -372,11 +428,7 @@
       else log('/value sin cifra utilizable');
     }catch(e){ log('/value: '+e.message); }
 
-    if(oficial!==null && Math.abs(oficial-suma)/Math.max(suma,1) > 0.005){
-      log(`discrepancia de ${(oficial-suma).toFixed(2)} $ → me quedo con /value`);
-      return oficial;
-    }
-    return suma;
+    return {total:suma, excluido:sumaExcl, resto:sumaResto, oficial};
   }
 
   async function fetchCash(){
@@ -445,16 +497,23 @@
     $('stamp').textContent='Consultando…'; $('stamp').className='stamp';
     $('fallback').hidden=true; $('warn').hidden=true;
     try{
-      const pf=await fetchPortfolio();
+      const cartera=await fetchPortfolio();
+      const pf=cartera.resto;
       const cash=await fetchCash();
       if(cash!==null) localStorage.setItem(CASH_KEY,String(cash));
       const usado=cash!==null?cash:storedCash();
       if(usado===null){ log('sin efectivo fiable: no registro'); throw new Error('sin saldo'); }
       const perps=perpsGuardado();
-      const nav=pf+usado+perps;
-      log(`NAV = ${pf.toFixed(2)} predicciones + ${usado.toFixed(2)} colateral`
-          +(perps?` + ${perps.toFixed(2)} perps`:' (perps sin fijar)')
+      const side=sidePendiente();
+      const nav=pf+usado+perps-side;                  // fuera el cobro del side pocket
+      const navFondo=cartera.total+usado+perps;       // el fondo entero
+      localStorage.setItem('knrad:fondo', JSON.stringify(
+        {t:nowS(), total:cartera.total, excl:cartera.excluido, cash:usado, navFondo, side}));
+      log(`tu base = ${pf.toFixed(2)} posiciones + ${usado.toFixed(2)} colateral`
+          +(side?` − ${side.toFixed(2)} side pocket`:'')
+          +(perps?` + ${perps.toFixed(2)} perps`:'')
           +` = ${nav.toFixed(2)} → ${(nav/TOTAL_UNITS).toFixed(2)}`);
+      log(`fondo entero (con excluidas) = ${navFondo.toFixed(2)}`);
       const ok=proponer(nav,pf,cash,cash===null,perps);
       render();
       $('stamp').textContent = !ok ? 'Revisar' : (cash===null?'Parcial':'Polymarket')+' · '
@@ -613,15 +672,34 @@
       ? `<div class="row"><span class="lbl">Management fee 2 % anual<small>${Math.floor(c.mgmtDays)} días devengados este año</small></span>
            <span class="val neg">−${usd(c.mgmt)}</span></div>` : '';
 
+    let bloqueSide='';
+    try{
+      const k=JSON.parse(localStorage.getItem('knrad:comp')||'null');
+      if(k&&k.side>0) bloqueSide=`<div class="row"><span class="lbl">Cobro del side pocket`
+        +`<small>está en el monedero pero es 100 % del gestor (MOU §6.2)</small></span>`
+        +`<span class="val" style="color:var(--amber)">−${usd0(k.side)}</span></div>`;
+    }catch(e){}
+    let bloqueFondo='';
+    try{
+      const k=JSON.parse(localStorage.getItem('knrad:fondo')||'null');
+      if(k&&Math.abs(k.t-cur.t)<3600&&k.excl>0){
+        bloqueFondo=`
+      <div class="row"><span class="lbl">Fondo entero<small>incluye el mercado excluido</small></span>
+        <span class="val">${usd0(k.navFondo)}</span></div>
+      <div class="row"><span class="lbl">Excluido del cálculo<small>${exclusiones().join(', ')} · participaciones en Other, sin precio</small></span>
+        <span class="val" style="color:var(--amber)">−${usd0(k.excl)}</span></div>`;
+      }
+    }catch(e){}
+
     $('fall').innerHTML=`
-      <div class="row"><span class="lbl">Fondo desde el 1.1.2026<small>NAV total ${usd0(c.nav)}</small></span>
+      <div class="row"><span class="lbl">Fondo desde el 1.1.2026<small>base de tu parte ${usd0(c.nav)}</small></span>
         <span class="val ${c.u>=100?'pos':'neg'}">${sgpc(c.u-100)}</span></div>
-      ${comp}
+      ${comp}${bloqueSide}${bloqueFondo}
       <div class="row"><span class="lbl">Fondo a tu entrada<small>16.08.2026 · tu marca de agua</small></span>
         <span class="val">${sgpc(HWM_U-100)}</span></div>
       <div class="row step"><span class="lbl">Desde que entraste<small>antes de fees</small></span>
         <span class="val ${fundRet>=0?'pos':'neg'}">${sgpc(fundRet)}</span></div>
-      <div class="row step"><span class="lbl">Valor bruto de tu participación<small>tu 24,30 % del fondo</small></span>
+      <div class="row step"><span class="lbl">Valor bruto de tu participación<small>${un(MIS_UNIDADES)} de ${un(totalUnidades())} unidades · ${pc(fraccion()*100)}</small></span>
         <span class="val">${usd(c.gross)}</span></div>
       ${mgmtRow}
       <div class="row"><span class="lbl">${gain?'Ganancia sujeta a fee':'Por debajo de la marca de agua'}</span>
@@ -636,6 +714,9 @@
       +`<span style="color:var(--amber-dim)">knradFund ${VERSION}</span>`;
     if(!$('cashv').value && storedCash()!==null) $('cashv').value=String(Math.round(storedCash()));
     if(!$('perpsv').value) $('perpsv').value=String(Math.round(perpsGuardado()));
+    if(!$('exclv').value) $('exclv').value=exclusiones().join(', ');
+    if(!$('unitsv').value) $('unitsv').value=totalUnidades().toFixed(4);
+    if(!$('sidev').value) $('sidev').value=sidePendiente().toFixed(2);
     draw();
   }
 
@@ -684,6 +765,35 @@
     [...$('ranges').children].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
     rango=b.dataset.r; draw();
   };
+  $('conv').onclick=async()=>{
+    $('convres').textContent='Consultando…'; LOG=[];
+    const B='https://data-api.polymarket.com';
+    let filas=[];
+    for(const tipo of ['REDEEM','CONVERSION','MERGE','SPLIT']){
+      try{
+        const j=await getJSON(`${B}/activity?user=${WALLET}&type=${tipo}&limit=500&sortDirection=DESC`);
+        const arr=Array.isArray(j)?j:(j.data||[]);
+        log(`${tipo}: ${arr.length} registros`);
+        arr.forEach(a=>filas.push({tipo, t:Number(a.timestamp||a.block_timestamp||0),
+                                   size:Number(a.size)||0, usdc:Number(a.usdcSize)||0,
+                                   titulo:a.title||a.slug||''}));
+      }catch(e){ log(`${tipo}: ${e.message}`); }
+    }
+    if(!filas.length){ $('convres').innerHTML='<span style="color:var(--amber-dim)">Ningún registro. Mira el diagnóstico por si falló la consulta.</span>'; return; }
+    filas.sort((a,b)=>b.t-a.t);
+    const ENT=dS(ENTRADA);
+    $('convres').innerHTML='<div style="max-height:320px;overflow:auto;margin-top:8px">'
+      + filas.slice(0,80).map(f=>{
+          const d=new Date(f.t*1000);
+          const post=f.t>=ENT;
+          return `<div style="font-size:11px;padding:6px 0;border-bottom:1px solid var(--line);color:${post?'var(--amber)':'var(--muted)'}">`
+            +`<b style="font-family:var(--mono)">${d.toLocaleDateString('es-ES')}</b> · ${f.tipo}`
+            +` · ${f.size?f.size.toFixed(2)+' part.':''}${f.usdc?' · <b>'+usd0(f.usdc)+'</b>':''}`
+            +`${post?' · <b>posterior a tu entrada</b>':''}`
+            +`<br><span style="opacity:.8">${esc(f.titulo).slice(0,70)}</span></div>`;
+        }).join('')
+      + '</div>';
+  };
   $('stamp').onclick=()=>refresh();
   $('acepta').onclick=()=>{
     if(!pendiente) return;
@@ -718,6 +828,27 @@
         +(r.bad?` <span style="color:var(--amber-dim)">${r.bad} ilegibles.</span>`:'')
       : '<span class="neg">No he podido leer ninguna línea.</span>';
     if(r.ok){ $('bulk').value=''; render(); }
+  };
+  $('exclsave').onclick=()=>{
+    localStorage.setItem(EXCL_KEY, $('exclv').value.trim());
+    const e=exclusiones();
+    $('cashres').innerHTML=`<span class="pos">${e.length?'Excluyendo: '+e.join(', '):'Sin exclusiones, todo el NAV común computa.'}</span>`;
+    refresh();
+  };
+  $('sidesave').onclick=()=>{
+    const n=parseNum($('sidev').value); if(n===null||n<0) return;
+    localStorage.setItem(SIDE_KEY,String(n));
+    $('cashres').innerHTML=n>0
+      ? `<span class="pos">Restando ${usd(n)} del NAV.</span>`
+      : '<span class="pos">Side pocket liquidado: ya no se resta nada.</span>';
+    refresh();
+  };
+  $('unitssave').onclick=()=>{
+    const n=parseNum($('unitsv').value);
+    if(n===null||n<MIS_UNIDADES){ $('cashres').innerHTML='<span class="neg">No puede ser menor que tus 139,31 unidades.</span>'; return; }
+    localStorage.setItem(UNITS_KEY,String(n));
+    $('cashres').innerHTML=`<span class="pos">Tu cuota pasa a ser el ${pc(fraccion()*100)}.</span>`;
+    render();
   };
   $('perpssave').onclick=()=>{
     const n=parseNum($('perpsv').value); if(n===null||n<0) return;

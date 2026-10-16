@@ -1,4 +1,4 @@
-const CACHE = "knrad-v14";;
+const CACHE = "knrad-v21";;
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-k192.png', './icon-k512.png', './seed.json'];
 
 self.addEventListener('install', e => {
