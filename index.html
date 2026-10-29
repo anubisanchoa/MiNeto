@@ -238,7 +238,7 @@
 
 <script>
 (() => {
-  const VERSION='v23';
+  const VERSION='v24';
 
   /* ===== datos de partida =====
      La base histórica vive en seed.json, junto a index.html. Se carga como
@@ -387,6 +387,7 @@
   }
 
   /* ===== red ===== */
+  let VIA_ULTIMA='directo';
   async function getJSON(url){
     let last;
     const nombres=['directo','corsproxy','allorigins'];
@@ -396,6 +397,7 @@
         if(!r.ok) throw new Error('HTTP '+r.status);
         const j=await r.json();
         log(`${url.split('/')[2]} via ${nombres[i]}: ok`);
+        VIA_ULTIMA=nombres[i];
         return j;
       }catch(e){ last=e; log(`${url.split('/')[2]} via ${nombres[i]}: ${e.message}`); }
     }
@@ -412,6 +414,7 @@
       if(j.length<500) break;
       offset+=500;
     }
+    const viaPos=VIA_ULTIMA;
     const excl=todas.filter(esExcluida);
     const resto=todas.filter(p=>!esExcluida(p));
     const sumaExcl=excl.reduce((s,p)=>s+(Number(p.currentValue)||0),0);
@@ -429,7 +432,7 @@
       else log('/value sin cifra utilizable');
     }catch(e){ log('/value: '+e.message); }
 
-    return {total:suma, excluido:sumaExcl, resto:sumaResto, oficial};
+    return {total:suma, excluido:sumaExcl, resto:sumaResto, oficial, via:viaPos, n:todas.length};
   }
 
   async function fetchCash(){
@@ -515,6 +518,26 @@
           +(perps?` + ${perps.toFixed(2)} perps`:'')
           +` = ${nav.toFixed(2)} → ${(nav/TOTAL_UNITS).toFixed(2)}`);
       log(`fondo entero (con excluidas) = ${navFondo.toFixed(2)}`);
+      // ¿dato viejo? El valor de 100 mercados nunca se repite al céntimo pasados
+      // unos minutos: si se repite, es una copia guardada, no una lectura.
+      let prev=null; try{ prev=JSON.parse(localStorage.getItem('knrad:ultpf')||'null'); }catch(e){}
+      const repetido = prev && Math.abs(prev.total-cartera.total)<0.005 && (nowS()-prev.t)>600;
+      const porProxy = cartera.via!=='directo';
+      if(!repetido) localStorage.setItem('knrad:ultpf', JSON.stringify({t:nowS(), total:cartera.total}));
+      if(repetido||porProxy){
+        const motivo = repetido
+          ? `las posiciones (${usd(cartera.total)}) son idénticas al céntimo a las de hace ${Math.round((nowS()-prev.t)/3600)} h: es una copia guardada, no una lectura de ahora`
+          : `la respuesta de Polymarket llegó por ${cartera.via}, que puede servir datos antiguos`;
+        log((repetido?'DATO REPETIDO':'VÍA PROXY')+': no registro');
+        pendiente={nav,pf,cash,parcial:cash===null,perps};
+        $('warn').hidden=false;
+        $('warntxt').innerHTML=`No he registrado esta lectura: ${motivo}. `
+          +`Suele pasar cuando no llegas a Polymarket sin VPN. Actívalo y vuelve a consultar.`;
+        render();
+        $('stamp').textContent=repetido?'Dato viejo · VPN':'Vía proxy';
+        $('stamp').className='stamp stale';
+        return;
+      }
       const ok=proponer(nav,pf,cash,cash===null,perps);
       render();
       $('stamp').textContent = !ok ? 'Revisar' : (cash===null?'Parcial':'Polymarket')+' · '
